@@ -1,8 +1,10 @@
 import os
 import boto3
 import watchtower, logging
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy 
+from flask import Flask, request
+from flask_sqlalchemy import SQLAlchemy
+from .log_formatter import StructuredFormatter
+import uuid
 
 def create_app(config_overrides=None):
     logging.basicConfig(level=logging.INFO)
@@ -17,11 +19,28 @@ def create_app(config_overrides=None):
             log_group_name="taskoverflow",
             boto3_client=boto3.client("logs", region_name="us-east-1")
     )
+    handler.setFormatter(StructuredFormatter())
+
     app.logger.addHandler(handler)
     logging.getLogger().addHandler(handler)
     logging.getLogger('werkzeug').addHandler(handler)
     logging.getLogger("sqlalchemy.engine").addHandler(handler)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
+    requests = logging.getLogger("requests")
+
+    requests.addHandler(handler)
+    @app.before_request
+    def before_request():
+        request.environ['REQUEST_ID'] = str(uuid.uuid4())
+        requests.info("Request started")
+
+    @app.after_request
+    def after_request(response):
+        requests.info("Request finished")
+        return response
+
+
 
     # Load the models 
     from todo.models import db 
